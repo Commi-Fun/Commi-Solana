@@ -17,9 +17,10 @@ pub struct Claim<'info> {
 
   #[account(
     mut,
-    seeds = [b"campaign", launcher.key().as_ref(), campaign.seed.to_le_bytes().as_ref()],
-    bump = campaign.bump,
-    has_one = mint @ CommiError::InvalidMint
+    seeds = [b"campaign", launcher.key().as_ref(), mint.key().as_ref()],
+    bump,
+    has_one = mint @ CommiError::InvalidMint,
+    has_one = launcher @ CommiError::InvalidLauncher
   )]
   pub campaign: Account<'info, CampaignState>,
   pub mint: Box<InterfaceAccount<'info, Mint>>,

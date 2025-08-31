@@ -8,6 +8,9 @@ pub enum CommiError {
   #[msg("Invaid Mint")]
   InvalidMint,
 
+  #[msg("Invaid Launcher")]
+  InvalidLauncher,
+
   #[msg("Invalid Distributor")]
   InvalidDistributor,
 

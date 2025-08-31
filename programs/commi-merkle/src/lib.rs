@@ -14,8 +14,8 @@ pub mod commi_merkle {
     use super::*;
 
     #[instruction(discriminator = 0)]
-    pub fn launch(ctx: Context<Launch>, seed: u64, fund: u64) -> Result<()> {
-        instructions::launch::handler(ctx, seed, fund)
+    pub fn launch(ctx: Context<Launch>, fund: u64, root: [u8; 32]) -> Result<()> {
+        instructions::launch::handler(ctx, fund, root)
     }
 
     #[instruction(discriminator = 1)]

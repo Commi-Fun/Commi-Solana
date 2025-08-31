@@ -1,12 +1,8 @@
-use anchor_lang::prelude::*;
-use anchor_spl::{
-  associated_token::AssociatedToken, 
-  token::{transfer_checked, TransferChecked}, 
-  token_interface::{Mint, TokenAccount, TokenInterface}
-};
+use anchor_lang::{prelude::*, system_program};
+use anchor_spl::token_interface::Mint;
 use crate::state::CampaignState;
 use crate::errors::CommiError;
-
+use crate::events::UpdateEvent;
 
 #[derive(Accounts)]
 pub struct Update<'info> {
@@ -24,6 +20,7 @@ pub struct Update<'info> {
   )]
   pub campaign: Account<'info, CampaignState>,
   pub mint: Box<InterfaceAccount<'info, Mint>>,
+  pub system_program: Program<'info, System>,
 }
 
 impl<'info> Update<'info> {
@@ -31,12 +28,44 @@ impl<'info> Update<'info> {
     self.campaign.merkle_root = root;
     Ok(())
   }
+
+  fn resize(&mut self) -> Result<()> {
+    let curr_bitmap_length = self.campaign.bit_map.len();
+    let new_bitmap_length = curr_bitmap_length * 2;
+    let new_account_size = 32 + 1 + 8 + 8 + 24 + 32 + new_bitmap_length + CampaignState::DISCRIMINATOR.len();
+    let current_lamports = self.campaign.to_account_info().lamports();
+    let new_rent_exempt = Rent::get()?.minimum_balance(new_account_size);
+    if new_rent_exempt > current_lamports {
+      let diff = new_rent_exempt - current_lamports;
+      system_program::transfer(
+        CpiContext::new(
+          self.system_program.to_account_info(),
+          system_program::Transfer {
+            from: self.distributor.to_account_info(),
+            to: self.campaign.to_account_info(),
+          },
+        ),
+        diff
+      )?;
+    }
+    self.campaign.bit_map.resize(new_bitmap_length, 0u8);
+    Ok(())
+  }
+
 }
 
 // TODO: Update distributor key to a valid fixed address
-pub fn handler(ctx: Context<Update>, root: [u8; 32]) -> Result<()> {
+pub fn handler(ctx: Context<Update>, root: [u8; 32], flag: bool) -> Result<()> {
   require_eq!(ctx.accounts.distributor.key(), Pubkey::from_str_const("22222222222222222222222222222222222222222222"), CommiError::InvalidDistributor);
-  ctx.accounts.update(root)
+  if flag {
+    ctx.accounts.resize()?;
+  }
+  ctx.accounts.update(root)?;
+  emit!(UpdateEvent {
+    campaign: ctx.accounts.campaign.key(),
+    root,
+  });
+  Ok(())
 }
 
 

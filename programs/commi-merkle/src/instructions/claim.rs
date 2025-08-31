@@ -1,9 +1,10 @@
 use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;
-use anchor_spl::token_interface::{TokenInterface, TokenAccount, Mint, transfer_checked, CloseAccount, TransferChecked, close_account};
+use anchor_spl::token_interface::{TokenInterface, TokenAccount, Mint, transfer_checked, TransferChecked};
 use solana_nostd_sha256::hashv;
 use crate::state::CampaignState;
 use crate::errors::CommiError;
+use crate::events::ClaimEvent;
 
 
 #[derive(Accounts)]
@@ -103,6 +104,10 @@ pub fn handler(ctx: Context<Claim>, amount: u64, user_idx: u16, proof: Vec<[u8; 
   ctx.accounts.verify_claim_status(amount, user_idx, proof, nonce)?;
   ctx.accounts.claim_tokens(amount)?;
   ctx.accounts.update_claim_status(user_idx)?;
+  emit!(ClaimEvent {
+    claimer: ctx.accounts.claimer.key(),
+    amount,
+  });
   Ok(())
 }
 

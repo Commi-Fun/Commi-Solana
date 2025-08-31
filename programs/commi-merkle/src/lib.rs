@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
 mod errors;
+mod events;
 mod instructions;
 mod state;
 
@@ -18,8 +19,8 @@ pub mod commi_merkle {
     }
 
     #[instruction(discriminator = 1)]
-    pub fn update(ctx: Context<Update>, root: [u8; 32]) -> Result<()> {
-        instructions::update::handler(ctx, root)
+    pub fn update(ctx: Context<Update>, root: [u8; 32], flag: bool) -> Result<()> {
+        instructions::update::handler(ctx, root, flag)
     }
 
     #[instruction(discriminator = 2)]

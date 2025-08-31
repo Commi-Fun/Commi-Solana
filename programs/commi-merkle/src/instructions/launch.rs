@@ -7,7 +7,7 @@ use anchor_spl::{
 };
 use crate::state::CampaignState;
 use crate::errors::CommiError;
-
+use crate::events::LaunchEvent;
 
 #[derive(Accounts)]
 #[instruction(seed: u64)]
@@ -18,8 +18,8 @@ pub struct Launch<'info> {
   #[account(
     init,
     payer = launcher,
-    // Allocate 32 participants at the beginning
-    space = 32 + 1 + 8 + 8 + 24 + 32 + 4+ CampaignState::DISCRIMINATOR.len(), 
+    // Allocate 31 participants + 1 funder at the beginning
+    space = 32 + 1 + 8 + 8 + 32 + 24 + 4 + CampaignState::DISCRIMINATOR.len(), 
     seeds = [b"champaign", launcher.key().as_ref(), seed.to_le_bytes().as_ref()],
     bump,
   )]
@@ -80,5 +80,10 @@ pub fn handler(ctx: Context<Launch>, seed: u64, fund: u64) -> Result<()> {
   require_gt!(fund, 0, CommiError::InvalidFund);
   ctx.accounts.populate_campaign(seed, fund, ctx.bumps.campaign)?;
   ctx.accounts.deposit_tokens(fund)?;
+  emit!(LaunchEvent { 
+    launcher: ctx.accounts.launcher.key(), 
+    fund, 
+    mint:  ctx.accounts.mint.key(),
+  });
   Ok(())
 }

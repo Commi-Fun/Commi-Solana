@@ -53,7 +53,7 @@ impl<'info> Claim<'info> {
     let section = user_idx / 8;
     let bit = (user_idx % 8) as u8;
     let claimed = self.campaign.bit_map[section as usize] & (1 << bit);
-    if claimed == 1 {
+    if claimed != 0 {
       return err!(CommiError::AlreadyClaimed);
     } else {
       let mut leaf = hashv(&[
@@ -69,7 +69,6 @@ impl<'info> Claim<'info> {
           leaf = hashv(&[proof[i].as_ref(), leaf.as_ref()]);
         }
       }
-
       if leaf != self.campaign.merkle_root {
         return err!(CommiError::InvalidProof);
       }      
@@ -84,9 +83,18 @@ impl<'info> Claim<'info> {
     Ok(())
   }
 
-  fn claim_tokens(&self, amount: u64) -> Result<()> {
+  fn claim_tokens(&self, amount: u64, bump: u8) -> Result<()> {
+    let launcher_key = self.launcher.key();
+    let mint_key = self.mint.key();
+    let signer_seeds: [&[&[u8]]; 1] = [&[
+        b"campaign",
+        launcher_key.as_ref(),
+        mint_key.as_ref(),
+        &[bump], // Use the bump from CampaignState
+    ]];
+
     transfer_checked(
-      CpiContext::new(
+      CpiContext::new_with_signer(
         self.token_program.to_account_info(),
         TransferChecked {
           from: self.vault.to_account_info(),
@@ -94,7 +102,10 @@ impl<'info> Claim<'info> {
           to: self.claimer_ata.to_account_info(),
           authority: self.campaign.to_account_info(),
         },
-      ), amount, self.mint.decimals
+        &signer_seeds
+      ), 
+      amount, 
+      self.mint.decimals
     )?;
     Ok(())
   }
@@ -103,7 +114,7 @@ impl<'info> Claim<'info> {
 pub fn handler(ctx: Context<Claim>, amount: u64, user_idx: u16, proof: Vec<[u8; 32]>, nonce: u64) -> Result<()> {
   require_gt!(amount, 0, CommiError::InvalidAmount);
   ctx.accounts.verify_claim_status(amount, user_idx, proof, nonce)?;
-  ctx.accounts.claim_tokens(amount)?;
+  ctx.accounts.claim_tokens(amount, ctx.bumps.campaign)?;
   ctx.accounts.update_claim_status(user_idx)?;
   emit!(ClaimEvent {
     claimer: ctx.accounts.claimer.key(),

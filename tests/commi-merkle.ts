@@ -1,10 +1,11 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { CommiMerkle } from "../target/types/commi_merkle";
-import { PublicKey, Keypair, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { MockPythPull } from "../target/types/mock_pyth_pull";
+import { MockPythPush } from "../target/types/mock_pyth_push";
+import { PublicKey, Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { 
   TOKEN_PROGRAM_ID, 
-  ASSOCIATED_TOKEN_PROGRAM_ID,
   createMint,
   mintTo,
   getAssociatedTokenAddress,
@@ -26,8 +27,12 @@ describe("commi-merkle", () => {
   // Configure the client to use the local cluster.
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
+  const admin = anchor.Wallet.local();
+  const SOLFeedId = "0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d";
 
   const program = anchor.workspace.CommiMerkle as Program<CommiMerkle>;
+  const pythPullProgram = anchor.workspace.MockPythPull as Program<MockPythPull>;
+  const pythPushProgram = anchor.workspace.MockPythPush as Program<MockPythPush>;
   
   // Test accounts
   let launcher: Keypair;
@@ -38,6 +43,8 @@ describe("commi-merkle", () => {
   let launcherAta: PublicKey;
   let campaignPda: PublicKey;
   let vaultPda: PublicKey;
+  let pythPriceAccount: Keypair;
+
   
   // Test constants
   const fundAmount = new anchor.BN(1000000000); // 1 billion tokens with 9 decimals
@@ -120,10 +127,31 @@ describe("commi-merkle", () => {
       true // allowOwnerOffCurve
     );
     
+    // Setup mock Pyth price account
+    pythPriceAccount = await setupMockPythPriceAccount();
+    
     // Setup merkle trees
     setupLaunchMerkleTree();
     setupClaimMerkleTree();
   });
+
+  async function setupMockPythPriceAccount(): Promise<Keypair> {
+    // Create a mock Pyth price account
+    const priceAccount = Keypair.generate();
+
+    const tx = await pythPullProgram.methods.initialize(
+      SOLFeedId, 
+      new anchor.BN(20000000000), 
+      new anchor.BN(10000000),
+      -8,
+    ).accounts({
+      payer: admin.publicKey,
+      price: priceAccount.publicKey,
+    }).signers([priceAccount]).rpc();
+
+    console.log("Mock pyth pull transaction signature:", tx);
+    return priceAccount;
+  }
 
   function setupLaunchMerkleTree() {
     // Generate 32 leaves for launch merkle tree
@@ -203,7 +231,7 @@ describe("commi-merkle", () => {
     // Create leaves for two claimers
     updateMerkleTree(1, claimer1.publicKey, claimAmount1);
     updateMerkleTree(2, claimer2.publicKey, claimAmount2);
-    
+    updateMerkleTree(0, launcher.publicKey, fundAmount.sub(claimAmount1).sub(claimAmount2));
     claimMerkleTree = generateMerkleTree(merkleLeaves);
   }
   
@@ -274,7 +302,13 @@ describe("commi-merkle", () => {
           .launch(zeroFund, Array.from(zeroMerkleRoot))
           .accounts({
             launcher: launcher.publicKey,
+            distributor: distributor.publicKey,
+            campaign: campaignPda,
+            price_update: pythPriceAccount.publicKey,
             mint: mint,
+            launcherAta,
+            vault: vaultPda,
+            priceUpdate: pythPriceAccount.publicKey,
             tokenProgram: TOKEN_PROGRAM_ID,
           })
           .signers([launcher])
@@ -288,27 +322,64 @@ describe("commi-merkle", () => {
 
     it("should launch a new campaign successfully", async () => {
       const merkleRoot = launchMerkleTree[launchMerkleTree.length - 1][0];
+      
+      // Get balances before transaction
+      const launcherBalanceBefore = await provider.connection.getBalance(launcher.publicKey);
+      const distributorBalanceBefore = await provider.connection.getBalance(distributor.publicKey);
+      
       const tx = await program.methods
         .launch(fundAmount, Array.from(merkleRoot))
         .accounts({
           launcher: launcher.publicKey,
+          distributor: distributor.publicKey,
+          campaign: campaignPda,
+          price_update: pythPriceAccount.publicKey,
           mint,
+          launcherAta,
+          vault: vaultPda,
+          priceUpdate: pythPriceAccount.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
         })
         .signers([launcher])
         .rpc();
       
       console.log("Launch transaction signature:", tx);
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Get transaction details for gas consumption
+      const txDetails = await provider.connection.getTransaction(tx, {
+        commitment: "confirmed",
+        maxSupportedTransactionVersion: 0
+      });
+      const gasUsed = txDetails?.meta?.fee || 0;
+      console.log("Gas consumed:", gasUsed, "lamports");
+      
+      // Get balances after transaction
+      const launcherBalanceAfter = await provider.connection.getBalance(launcher.publicKey);
+      const distributorBalanceAfter = await provider.connection.getBalance(distributor.publicKey);
+      
+      // Calculate service fee transferred (should be ~$5 worth of SOL)
+      const serviceFeeTransferred = distributorBalanceAfter - distributorBalanceBefore;
+      console.log("Service fee transferred:", serviceFeeTransferred, "lamports");
+      
+      // Verify service fee was transferred (checking it's greater than 0 and reasonable)
+      // With SOL at ~$200, $5 would be ~0.025 SOL = 25,000,000 lamports
+      // But since we're using mock Pyth with price 200.00000000, we expect:
+      // $5 / $200 = 0.025 SOL = 25,000,000 lamports
+      assert.isAbove(serviceFeeTransferred, 0, "Service fee should be transferred");
+      assert.isBelow(serviceFeeTransferred, 100_000_000, "Service fee should be reasonable (less than 0.1 SOL)");
       
       // Verify campaign state
       const campaignAccount = await program.account.campaignState.fetch(campaignPda);
+      assert.equal(campaignAccount.launcher.toString(), launcher.publicKey.toString());
       assert.equal(campaignAccount.mint.toString(), mint.toString());
       assert.equal(campaignAccount.fund.toString(), fundAmount.toString());
       assert.equal(
         Buffer.from(campaignAccount.merkleRoot).toString("hex"),
         merkleRoot.toString("hex")
       );
-      assert.equal(campaignAccount.bitMap.length, 4);
+      assert.equal(campaignAccount.rewards.length, 32);
+      assert.equal(campaignAccount.rewards[0].toString(), fundAmount.toString());
       
       // Verify vault received tokens
       const vaultAccount = await getAccount(provider.connection, vaultPda);
@@ -317,10 +388,16 @@ describe("commi-merkle", () => {
   });
 
   describe("update", () => {
-    it("should update merkle root successfully", async () => {
+    it("should update merkle root and rewards successfully", async () => {
       const claimMerkleRoot = claimMerkleTree[claimMerkleTree.length - 1][0];
+      // Update rewards for claimer1 (index 1) and claimer2 (index 2)
+      const participants = [
+        [new anchor.BN(1), claimAmount1],
+        [new anchor.BN(2), claimAmount2]
+      ];
+      
       const tx = await program.methods
-        .update(Array.from(claimMerkleRoot), false)
+        .update(Array.from(claimMerkleRoot), participants)
         .accounts({
           distributor: distributor.publicKey,
           launcher: launcher.publicKey,
@@ -331,35 +408,67 @@ describe("commi-merkle", () => {
         .rpc();
       
       console.log("Update transaction signature:", tx);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Get transaction details for gas consumption
+      const txDetails = await provider.connection.getTransaction(tx, {
+        commitment: "confirmed",
+        maxSupportedTransactionVersion: 0
+      });
+      const gasUsed = txDetails?.meta?.fee || 0;
+      console.log("Gas consumed:", gasUsed, "lamports");
       
-      // Verify merkle root was updated
+      // Verify merkle root was updated and rewards were set
       const campaignAccount = await program.account.campaignState.fetch(campaignPda);
       assert.equal(
         Buffer.from(campaignAccount.merkleRoot).toString("hex"),
         claimMerkleRoot.toString("hex")
       );
+      assert.equal(campaignAccount.rewards[1].toString(), claimAmount1.toString());
+      assert.equal(campaignAccount.rewards[2].toString(), claimAmount2.toString());
     });
     
-    it("should resize bitmap when flag is true", async () => {
+    it("should resize rewards array and update in single transaction", async () => {
       expandMerkleTree();
       expandedMerkleTree = generateMerkleTree(merkleLeaves);
       let expandedMerkleRoot = expandedMerkleTree[expandedMerkleTree.length - 1][0];
-      const tx = await program.methods
-        .update(Array.from(expandedMerkleRoot), true)
+      const participants: any[] = []; // No new participants in this test
+      
+      // Create both instructions
+      const extendIx = await program.methods
+        .extend(new anchor.BN(132)) // Extend to 132 participants (32 + 100)
+        .accounts({
+          distributor: distributor.publicKey,
+          campaign: campaignPda,
+        })
+        .instruction();
+      
+      const updateIx = await program.methods
+        .update(Array.from(expandedMerkleRoot), participants)
         .accounts({
           distributor: distributor.publicKey,
           launcher: launcher.publicKey,
           campaign: campaignPda,
           mint
         })
-        .signers([distributor])
-        .rpc();
+        .instruction();
       
-      console.log("Update with resize transaction signature:", tx);
+      // Send both instructions in a single transaction
+      const tx = new anchor.web3.Transaction().add(extendIx, updateIx);
+      const signature = await provider.sendAndConfirm(tx, [distributor]);
       
-      // Verify bitmap was resized
+      console.log("Update with resize transaction signature:", signature);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Get transaction details for gas consumption
+      const txDetails = await provider.connection.getTransaction(signature, {
+        commitment: "confirmed",
+        maxSupportedTransactionVersion: 0
+      });
+      const gasUsed = txDetails?.meta?.fee || 0;
+      console.log("Gas consumed:", gasUsed, "lamports");
+      
+      // Verify rewards array was resized
       const campaignAccount = await program.account.campaignState.fetch(campaignPda);
-      assert.equal(campaignAccount.bitMap.length, 8); // Should be doubled from 4 to 8
+      assert.equal(campaignAccount.rewards.length, 132); // Should be increased from 32 to 132 (32 + 100)
       assert.equal(
         Buffer.from(campaignAccount.merkleRoot).toString("hex"),
         expandedMerkleRoot.toString("hex")
@@ -374,7 +483,7 @@ describe("commi-merkle", () => {
       
       try {
         await program.methods
-          .update(Array.from(claimMerkleRoot), false)
+          .update(Array.from(claimMerkleRoot), [])
           .accounts({
             distributor: invalidDistributor.publicKey,
             launcher: launcher.publicKey,
@@ -401,7 +510,6 @@ describe("commi-merkle", () => {
 
       const tx = await program.methods
         .claim(
-          claimAmount1,
           1, // user_idx for claimer1
           proof1.map(p => Array.from(p)),
           merkleLeaves[1].nonce,
@@ -419,14 +527,22 @@ describe("commi-merkle", () => {
         .rpc();
       
       console.log("Claim transaction signature for claimer1:", tx);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Get transaction details for gas consumption
+      const txDetails = await provider.connection.getTransaction(tx, {
+        commitment: "confirmed",
+        maxSupportedTransactionVersion: 0
+      });
+      const gasUsed = txDetails?.meta?.fee || 0;
+      console.log("Gas consumed:", gasUsed, "lamports");
       
       // Verify claimer received tokens
       const claimerAccount = await getAccount(provider.connection, claimer1Ata);
       assert.equal(claimerAccount.amount.toString(), claimAmount1.toString());
       
-      // Verify bitmap was updated
+      // Verify rewards were updated (set to 0 after claim)
       const campaignAccount = await program.account.campaignState.fetch(campaignPda);
-      assert.equal((campaignAccount.bitMap[0] >> 1), 1); // First bit should be set
+      assert.equal(campaignAccount.rewards[1].toString(), "0"); // Should be 0 after claim
     });
     
     it("claimer1 should fail when trying to claim again", async () => {
@@ -438,7 +554,6 @@ describe("commi-merkle", () => {
       try {
         await program.methods
           .claim(
-            claimAmount1,
             1, // user_idx for claimer1
             proof1.map(p => Array.from(p)),
             merkleLeaves[1].nonce,
@@ -455,9 +570,9 @@ describe("commi-merkle", () => {
           .signers([claimer1])
           .rpc();
         
-        assert.fail("Should have failed with AlreadyClaimed error");
+        assert.fail("Should have failed with InvalidAmount error (already claimed)");
       } catch (error) {
-        assert.include(error.toString(), "AlreadyClaimed");
+        assert.include(error.toString(), "InvalidAmount"); // Since rewards[1] is now 0
       }
     });
     
@@ -469,7 +584,6 @@ describe("commi-merkle", () => {
       let proof2 = getProof(expandedMerkleTree, 2);
       const tx = await program.methods
         .claim(
-          claimAmount2,
           2, // user_idx for claimer2
           proof2.map(p => Array.from(p)),
           merkleLeaves[2].nonce,
@@ -487,14 +601,22 @@ describe("commi-merkle", () => {
         .rpc();
       
       console.log("Claim transaction signature for claimer2:", tx);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Get transaction details for gas consumption
+      const txDetails = await provider.connection.getTransaction(tx, {
+        commitment: "confirmed",
+        maxSupportedTransactionVersion: 0
+      });
+      const gasUsed = txDetails?.meta?.fee || 0;
+      console.log("Gas consumed:", gasUsed, "lamports");
       
       // Verify claimer received tokens
       const claimerAccount = await getAccount(provider.connection, claimer2Ata);
       assert.equal(claimerAccount.amount.toString(), claimAmount2.toString());
       
-      // Verify bitmap was updated
+      // Verify rewards were updated (set to 0 after claim)
       const campaignAccount = await program.account.campaignState.fetch(campaignPda);
-      assert.equal((campaignAccount.bitMap[0] >> 2), 1); // Second bit should be set
+      assert.equal(campaignAccount.rewards[2].toString(), "0"); // Should be 0 after claim
     });
     
     it("should fail with invalid proof", async () => {
@@ -510,7 +632,6 @@ describe("commi-merkle", () => {
       try {
         await program.methods
           .claim(
-            claimAmount1,
             3, // user_idx 
             proof1.map(p => Array.from(p)), // Wrong proof for this claimer
             merkleLeaves[1].nonce,
@@ -527,9 +648,9 @@ describe("commi-merkle", () => {
           .signers([invalidClaimer])
           .rpc();
         
-        assert.fail("Should have failed with InvalidProof error");
+        assert.fail("Should have failed with InvalidAmount error");
       } catch (error) {
-        assert.include(error.toString(), "InvalidProof");
+        assert.include(error.toString(), "InvalidAmount");
       }
     });
     
@@ -546,8 +667,7 @@ describe("commi-merkle", () => {
       try {
         await program.methods
           .claim(
-            new anchor.BN(0), // Zero amount
-            3,
+            3, // user_idx with no rewards allocated
             [],
             new anchor.BN(0)
           )

@@ -19,13 +19,18 @@ pub mod commi_merkle {
     }
 
     #[instruction(discriminator = 1)]
-    pub fn update(ctx: Context<Update>, root: [u8; 32], flag: bool) -> Result<()> {
-        instructions::update::handler(ctx, root, flag)
+    pub fn update(ctx: Context<Update>, root: [u8; 32], participants: Vec<[u64; 2]>) -> Result<()> {
+        instructions::update::handler(ctx, root, participants)
     }
 
     #[instruction(discriminator = 2)]
-    pub fn claim(ctx: Context<Claim>, amount: u64, user_idx: u16, proof: Vec<[u8; 32]>, nonce: u64) -> Result<()> {
-        instructions::claim::handler(ctx, amount, user_idx, proof, nonce)
+    pub fn claim(ctx: Context<Claim>, user_idx: u16, proof: Vec<[u8; 32]>, nonce: u64) -> Result<()> {
+        instructions::claim::handler(ctx, user_idx, proof, nonce)
+    }
+
+    #[instruction(discriminator = 3)]
+    pub fn extend(ctx: Context<Extend>, new_participants: u64) -> Result<()> {
+        instructions::extend::handler(ctx, new_participants)
     }
 }
 

@@ -49,41 +49,34 @@ pub struct Claim<'info> {
 
 impl<'info> Claim<'info> {
 
-  fn verify_claim_status(&self, amount: u64, user_idx: u16, proof: Vec<[u8; 32]>, nonce: u64) -> Result<()> {
-    let section = user_idx / 8;
-    let bit = (user_idx % 8) as u8;
-    let claimed = self.campaign.bit_map[section as usize] & (1 << bit);
-    if claimed != 0 {
-      return err!(CommiError::AlreadyClaimed);
-    } else {
-      let mut leaf = hashv(&[
-        self.claimer.key().to_bytes().as_ref(), 
-        amount.to_le_bytes().as_ref(), 
-        nonce.to_le_bytes().as_ref()
-      ]);
-      for i in 0..proof.len() {
-        let position = user_idx >> i;
-        if position % 2 == 0 {
-          leaf = hashv(&[leaf.as_ref(), proof[i].as_ref()]);
-        } else {
-          leaf = hashv(&[proof[i].as_ref(), leaf.as_ref()]);
-        }
+  fn verify_claim_status(&self, user_idx: u16, proof: Vec<[u8; 32]>, nonce: u64) -> Result<()> {
+    require_gt!(self.campaign.rewards.len(), user_idx as usize, CommiError::InvalidUserIdx);
+    require_gt!(self.campaign.rewards[user_idx as usize], 0, CommiError::InvalidAmount);
+    let mut leaf = hashv(&[
+      self.claimer.key().to_bytes().as_ref(), 
+      self.campaign.rewards[user_idx as usize].to_le_bytes().as_ref(), 
+      nonce.to_le_bytes().as_ref()
+    ]);
+    for i in 0..proof.len() {
+      let position = user_idx >> i;
+      if position % 2 == 0 {
+        leaf = hashv(&[leaf.as_ref(), proof[i].as_ref()]);
+      } else {
+        leaf = hashv(&[proof[i].as_ref(), leaf.as_ref()]);
       }
-      if leaf != self.campaign.merkle_root {
-        return err!(CommiError::InvalidProof);
-      }      
-      return Ok(())
     }
+    if leaf != self.campaign.merkle_root {
+      return err!(CommiError::InvalidProof);
+    }
+    return Ok(())
   }
 
-  fn update_claim_status(&mut self, user_idx: u16) -> Result<()> {
-    let section = user_idx / 8;
-    let bit = (user_idx % 8) as u8;
-    self.campaign.bit_map[section as usize] |= 1 << bit;
+  fn update_status(&mut self, user_idx: u16) -> Result<()> {
+    self.campaign.rewards[user_idx as usize] = 0;
     Ok(())
   }
 
-  fn claim_tokens(&self, amount: u64, bump: u8) -> Result<()> {
+  fn claim_tokens(&self, user_idx: u16, bump: u8) -> Result<()> {
     let launcher_key = self.launcher.key();
     let mint_key = self.mint.key();
     let signer_seeds: [&[&[u8]]; 1] = [&[
@@ -104,21 +97,20 @@ impl<'info> Claim<'info> {
         },
         &signer_seeds
       ), 
-      amount, 
+      self.campaign.rewards[user_idx as usize], 
       self.mint.decimals
     )?;
     Ok(())
   }
 }
 
-pub fn handler(ctx: Context<Claim>, amount: u64, user_idx: u16, proof: Vec<[u8; 32]>, nonce: u64) -> Result<()> {
-  require_gt!(amount, 0, CommiError::InvalidAmount);
-  ctx.accounts.verify_claim_status(amount, user_idx, proof, nonce)?;
-  ctx.accounts.claim_tokens(amount, ctx.bumps.campaign)?;
-  ctx.accounts.update_claim_status(user_idx)?;
+pub fn handler(ctx: Context<Claim>, user_idx: u16, proof: Vec<[u8; 32]>, nonce: u64) -> Result<()> {
+  ctx.accounts.verify_claim_status(user_idx, proof, nonce)?;
+  ctx.accounts.claim_tokens( user_idx, ctx.bumps.campaign)?;
+  ctx.accounts.update_status(user_idx)?;
   emit!(ClaimEvent {
     claimer: ctx.accounts.claimer.key(),
-    amount,
+    campaign: ctx.accounts.campaign.key(),
   });
   Ok(())
 }

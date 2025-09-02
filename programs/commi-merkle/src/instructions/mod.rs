@@ -7,3 +7,6 @@ pub use update::*;
 
 pub mod claim;
 pub use claim::*;
+
+pub mod extend;
+pub use extend::*;

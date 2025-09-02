@@ -2,6 +2,10 @@ use anchor_lang::prelude::*;
 
 #[error_code]
 pub enum CommiError {
+
+  #[msg("Insufficient Balance")]
+  InsufficientBalance,
+
   #[msg("Invalid Fund")]
   InvalidFund,
 
@@ -22,5 +26,8 @@ pub enum CommiError {
 
   #[msg("Invalid Amount")]
   InvalidAmount,
+
+  #[msg("Invalid User Idx")]
+  InvalidUserIdx,
 
 }

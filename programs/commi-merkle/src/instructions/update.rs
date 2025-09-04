@@ -25,25 +25,49 @@ pub struct Update<'info> {
 }
 
 impl<'info> Update<'info> {
+
+  fn lock(&mut self) -> Result<()> {
+    self.campaign.locked = 1;
+    Ok(())
+  }
+
   fn update(&mut self, root: [u8; 32], participants: Vec<[u64; 2]>) -> Result<()> {
+    let accumulative_rewards: u64 = self.campaign.rewards.iter().sum();
+    self.campaign.rewards[0] = self.campaign.rewards[0]
+        .checked_sub(accumulative_rewards).ok_or(CommiError::InsufficientAllocation)?;
     for participant in participants {
-      self.campaign.rewards[participant[0] as usize] += participant[1];
+      self.campaign.rewards[participant[0] as usize] = 
+        self.campaign.rewards[participant[0] as usize].checked_add(participant[1]).ok_or(CommiError::InvalidUpdateAmount)?;
     }
     self.campaign.merkle_root = root;
     Ok(())
   }
+
+  fn unlock(&mut self) -> Result<()> {
+    self.campaign.locked = 0;
+    Ok(())
+  }
+
 }
 
 // TODO: Update distributor key to a valid fixed address
 pub fn handler(ctx: Context<Update>, root: [u8; 32], participants: Vec<[u64; 2]>) -> Result<()> {
   require_eq!(ctx.accounts.distributor.key(), Pubkey::from_str_const("5PpeUwd8XqJ4y75gEM3ATrmaV4piR9GdZhpuFhH76UGw"), CommiError::InvalidDistributor);
   ctx.accounts.update(root, participants)?;
+  ctx.accounts.unlock()?;
   emit!(UpdateEvent {
     campaign: ctx.accounts.campaign.key(),
     root,
   });
   Ok(())
 }
+
+pub fn lock(ctx: Context<Update>) -> Result<()> {
+  require_eq!(ctx.accounts.distributor.key(), Pubkey::from_str_const("5PpeUwd8XqJ4y75gEM3ATrmaV4piR9GdZhpuFhH76UGw"), CommiError::InvalidDistributor);
+  ctx.accounts.lock()?;
+  Ok(())
+}
+
 
 
 

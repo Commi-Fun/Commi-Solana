@@ -22,7 +22,7 @@ pub struct Launch<'info> {
     init,
     payer = launcher,
     // Allocate 31 participants + 1 funder at the beginning
-    space = 32 + 32 + 8 + 32 + 24 + 32 * 8 + CampaignState::DISCRIMINATOR.len(), 
+    space = 32 + 32 + 8 + 1 + 32 + 24 + 32 * 8 + CampaignState::DISCRIMINATOR.len(), 
     seeds = [b"campaign", launcher.key().as_ref(), mint.key().as_ref()],
     bump,
   )]
@@ -95,13 +95,14 @@ impl<'info> Launch<'info> {
     Ok(())
   }
 
-  fn populate_campaign(&mut self, fund: u64, root: [u8; 32]) -> Result<()> {
+  fn populate_campaign(&mut self, fund: u64) -> Result<()> {
     let mut rewards = vec![0u64; 32];
     rewards[0] = fund;
     self.campaign.set_inner(CampaignState {
-      merkle_root: root,
+      merkle_root: [0u8; 32],
       launcher: self.launcher.key(),
       mint: self.mint.key(),
+      locked: 0,
       fund,
       rewards,
     });
@@ -127,12 +128,12 @@ impl<'info> Launch<'info> {
 
 }
 
-pub fn handler(ctx: Context<Launch>, fund: u64, root: [u8; 32]) -> Result<()> {
+pub fn handler(ctx: Context<Launch>, fund: u64) -> Result<()> {
   require_gt!(fund, 0, CommiError::InvalidFund);
   require_eq!(ctx.accounts.distributor.key(), Pubkey::from_str_const("5PpeUwd8XqJ4y75gEM3ATrmaV4piR9GdZhpuFhH76UGw"), CommiError::InvalidDistributor);
   let service_fee = ctx.accounts.service_fee_calculation()?;
   ctx.accounts.transfer_service_fee(service_fee)?;
-  ctx.accounts.populate_campaign(fund, root)?;
+  ctx.accounts.populate_campaign(fund)?;
   ctx.accounts.deposit_tokens(fund)?;
   emit!(LaunchEvent { 
     launcher: ctx.accounts.launcher.key(), 

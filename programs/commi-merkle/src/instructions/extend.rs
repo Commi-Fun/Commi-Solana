@@ -10,7 +10,7 @@ pub struct Extend<'info> {
   pub distributor: Signer<'info>,
   #[account(
     mut,
-    realloc = 32 + 32 + 8 + 32 + 24 + new_participants as usize * 8 + CampaignState::DISCRIMINATOR.len(), 
+    realloc = 32 + 32 + 8 + 1 + 32 + 24 + new_participants as usize * 8 + CampaignState::DISCRIMINATOR.len(), 
     realloc::payer = distributor,    
     realloc::zero = false,
   )]

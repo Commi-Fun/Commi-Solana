@@ -14,8 +14,8 @@ pub mod commi_merkle {
     use super::*;
 
     #[instruction(discriminator = 0)]
-    pub fn launch(ctx: Context<Launch>, fund: u64, root: [u8; 32]) -> Result<()> {
-        instructions::launch::handler(ctx, fund, root)
+    pub fn launch(ctx: Context<Launch>, fund: u64) -> Result<()> {
+        instructions::launch::handler(ctx, fund)
     }
 
     #[instruction(discriminator = 1)]
@@ -31,6 +31,11 @@ pub mod commi_merkle {
     #[instruction(discriminator = 3)]
     pub fn extend(ctx: Context<Extend>, new_participants: u64) -> Result<()> {
         instructions::extend::handler(ctx, new_participants)
+    }
+
+    #[instruction(discriminator = 4)]
+    pub fn lock(ctx: Context<Update>) -> Result<()> {
+        instructions::update::lock(ctx)
     }
 }
 

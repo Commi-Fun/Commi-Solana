@@ -18,6 +18,7 @@ pub struct UpdateEvent {
 pub struct ClaimEvent {
   pub claimer: Pubkey,
   pub campaign: Pubkey,
+  pub amount: u64,
 }
 
 #[event]

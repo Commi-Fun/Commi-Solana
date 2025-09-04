@@ -299,7 +299,7 @@ describe("commi-merkle", () => {
       
       try {
         await program.methods
-          .launch(zeroFund, Array.from(zeroMerkleRoot))
+          .launch(zeroFund)
           .accounts({
             launcher: launcher.publicKey,
             distributor: distributor.publicKey,
@@ -324,11 +324,10 @@ describe("commi-merkle", () => {
       const merkleRoot = launchMerkleTree[launchMerkleTree.length - 1][0];
       
       // Get balances before transaction
-      const launcherBalanceBefore = await provider.connection.getBalance(launcher.publicKey);
       const distributorBalanceBefore = await provider.connection.getBalance(distributor.publicKey);
       
       const tx = await program.methods
-        .launch(fundAmount, Array.from(merkleRoot))
+        .launch(fundAmount)
         .accounts({
           launcher: launcher.publicKey,
           distributor: distributor.publicKey,
@@ -351,11 +350,12 @@ describe("commi-merkle", () => {
         commitment: "confirmed",
         maxSupportedTransactionVersion: 0
       });
+      console.log("Launch tx:", txDetails);
+      console.log("Launch tx instructions:", txDetails?.transaction?.message?.instructions);
       const gasUsed = txDetails?.meta?.fee || 0;
       console.log("Gas consumed:", gasUsed, "lamports");
       
       // Get balances after transaction
-      const launcherBalanceAfter = await provider.connection.getBalance(launcher.publicKey);
       const distributorBalanceAfter = await provider.connection.getBalance(distributor.publicKey);
       
       // Calculate service fee transferred (should be ~$5 worth of SOL)
@@ -374,10 +374,10 @@ describe("commi-merkle", () => {
       assert.equal(campaignAccount.launcher.toString(), launcher.publicKey.toString());
       assert.equal(campaignAccount.mint.toString(), mint.toString());
       assert.equal(campaignAccount.fund.toString(), fundAmount.toString());
-      assert.equal(
-        Buffer.from(campaignAccount.merkleRoot).toString("hex"),
-        merkleRoot.toString("hex")
-      );
+      // assert.equal(
+      //   Buffer.from(campaignAccount.merkleRoot).toString("hex"),
+      //   merkleRoot.toString("hex")
+      // );
       assert.equal(campaignAccount.rewards.length, 32);
       assert.equal(campaignAccount.rewards[0].toString(), fundAmount.toString());
       

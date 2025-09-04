@@ -51,7 +51,7 @@ impl<'info> Claim<'info> {
 
   fn verify_claim_status(&self, user_idx: u16, proof: Vec<[u8; 32]>, nonce: u64) -> Result<()> {
     require_gt!(self.campaign.rewards.len(), user_idx as usize, CommiError::InvalidUserIdx);
-    require_gt!(self.campaign.rewards[user_idx as usize], 0, CommiError::InvalidAmount);
+    require_gt!(self.campaign.rewards[user_idx as usize], 0, CommiError::InvalidClaimAmount);
     let mut leaf = hashv(&[
       self.claimer.key().to_bytes().as_ref(), 
       self.campaign.rewards[user_idx as usize].to_le_bytes().as_ref(), 
@@ -71,9 +71,10 @@ impl<'info> Claim<'info> {
     return Ok(())
   }
 
-  fn update_status(&mut self, user_idx: u16) -> Result<()> {
+  fn update_status(&mut self, user_idx: u16) -> Result<u64> {
+    let reward = self.campaign.rewards[user_idx as usize];
     self.campaign.rewards[user_idx as usize] = 0;
-    Ok(())
+    Ok(reward)
   }
 
   fn claim_tokens(&self, user_idx: u16, bump: u8) -> Result<()> {
@@ -105,12 +106,14 @@ impl<'info> Claim<'info> {
 }
 
 pub fn handler(ctx: Context<Claim>, user_idx: u16, proof: Vec<[u8; 32]>, nonce: u64) -> Result<()> {
+  require_eq!(ctx.accounts.campaign.locked, 0, CommiError::CampaignLocked);
   ctx.accounts.verify_claim_status(user_idx, proof, nonce)?;
   ctx.accounts.claim_tokens( user_idx, ctx.bumps.campaign)?;
-  ctx.accounts.update_status(user_idx)?;
+  let amount = ctx.accounts.update_status(user_idx)?;
   emit!(ClaimEvent {
     claimer: ctx.accounts.claimer.key(),
     campaign: ctx.accounts.campaign.key(),
+    amount
   });
   Ok(())
 }

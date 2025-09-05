@@ -32,7 +32,9 @@ impl<'info> Update<'info> {
   }
 
   fn update(&mut self, root: [u8; 32], participants: Vec<[u64; 2]>) -> Result<()> {
-    let accumulative_rewards: u64 = self.campaign.rewards.iter().sum();
+    let accumulative_rewards = participants
+      .iter()
+      .fold(0, |acc, participant| acc + participant[1]);
     self.campaign.rewards[0] = self.campaign.rewards[0]
         .checked_sub(accumulative_rewards).ok_or(CommiError::InsufficientAllocation)?;
     for participant in participants {

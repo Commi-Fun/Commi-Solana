@@ -20,6 +20,7 @@ import * as fs from "fs";
 interface MerkleLeaf {
   claimer: PublicKey;
   amount: anchor.BN;
+  index: anchor.BN;
   nonce: anchor.BN;
 }
 
@@ -32,7 +33,6 @@ describe("commi-merkle", () => {
 
   const program = anchor.workspace.CommiMerkle as Program<CommiMerkle>;
   const pythPullProgram = anchor.workspace.MockPythPull as Program<MockPythPull>;
-  const pythPushProgram = anchor.workspace.MockPythPush as Program<MockPythPush>;
   
   // Test accounts
   let launcher: Keypair;
@@ -167,6 +167,7 @@ describe("commi-merkle", () => {
     merkleLeaves.push({
       claimer:launcher.publicKey, 
       amount: fundAmount, 
+      index: new anchor.BN(0),
       nonce: nonces[0],
     });
     
@@ -176,7 +177,8 @@ describe("commi-merkle", () => {
       merkleLeaves.push({
         claimer: zeroAddress, 
         amount: new anchor.BN(0), 
-        nonce: nonces[i]
+        index: new anchor.BN(i),
+        nonce: nonces[i],
       });
     }
     
@@ -222,6 +224,7 @@ describe("commi-merkle", () => {
       merkleLeaves.push({
         claimer: PublicKey.default, 
         amount: new anchor.BN(0), 
+        index: new anchor.BN(curr_length + i),
         nonce: new anchor.BN(Math.floor(Math.random() * 1000000))
       });
     }
@@ -235,12 +238,13 @@ describe("commi-merkle", () => {
     claimMerkleTree = generateMerkleTree(merkleLeaves);
   }
   
-  function createLeafHash(claimer: PublicKey, amount: anchor.BN, nonce: anchor.BN): Buffer {
+  function createLeafHash(claimer: PublicKey, amount: anchor.BN, index: anchor.BN, nonce: anchor.BN): Buffer {
     return Buffer.from(
       sha256.array(
         Buffer.concat([
           claimer.toBuffer(),
           amount.toArrayLike(Buffer, "le", 8),
+          index.toArrayLike(Buffer, "le", 8),
           nonce.toArrayLike(Buffer, "le", 8)
         ])
       )
@@ -255,7 +259,7 @@ describe("commi-merkle", () => {
   
   function generateMerkleTree(leaves: MerkleLeaf[]): Buffer[][] {
     let result: Buffer[][] = [];
-    let currentLevel = leaves.map(leaf => createLeafHash(leaf.claimer, leaf.amount, leaf.nonce));
+    let currentLevel = leaves.map(leaf => createLeafHash(leaf.claimer, leaf.amount, leaf.index, leaf.nonce));
     result.push(currentLevel);
 
     // Build tree level by level
@@ -272,34 +276,35 @@ describe("commi-merkle", () => {
 
   describe("launch", () => {
 
-    it("should fail when fund amount is zero", async () => {
-      const zeroFund = new anchor.BN(0);
+    it("should fail when fund amount is below minimum (10000)", async () => {
+      const belowMinimum = new anchor.BN(9999);
       
-      // Create a merkle root for zero fund
-      const zeroLeaves: MerkleLeaf[] = [];
-      const zeroNonces: anchor.BN[] = [];
+      // Create a merkle root for below minimum fund
+      const belowMinLeaves: MerkleLeaf[] = [];
+      const belowMinNonces: anchor.BN[] = [];
       for (let i = 0; i < 32; i++) {
-        zeroNonces.push(new anchor.BN(Math.floor(Math.random() * 1000000)));
+        belowMinNonces.push(new anchor.BN(Math.floor(Math.random() * 1000000)));
       }
-      zeroLeaves.push({
+      belowMinLeaves.push({
         claimer: launcher.publicKey, 
-        amount: zeroFund, 
-        nonce: zeroNonces[0]
+        amount: belowMinimum, 
+        index: new anchor.BN(0),
+        nonce: belowMinNonces[0]
       });
       const zeroAddress = PublicKey.default;
       for (let i = 1; i < 32; i++) {
-        zeroLeaves.push({
+        belowMinLeaves.push({
           claimer: zeroAddress, 
           amount: new anchor.BN(0), 
-          nonce: zeroNonces[i]
+          index: new anchor.BN(i),
+          nonce: belowMinNonces[i]
         });
       }
-      const zeroMerkleTree = generateMerkleTree(zeroLeaves);
-      const zeroMerkleRoot = zeroMerkleTree[zeroMerkleTree.length - 1][0];
+      const belowMinMerkleTree = generateMerkleTree(belowMinLeaves);
       
       try {
         await program.methods
-          .launch(zeroFund)
+          .launch(belowMinimum)
           .accounts({
             launcher: launcher.publicKey,
             distributor: distributor.publicKey,
@@ -350,8 +355,7 @@ describe("commi-merkle", () => {
         commitment: "confirmed",
         maxSupportedTransactionVersion: 0
       });
-      console.log("Launch tx:", txDetails);
-      console.log("Launch tx instructions:", txDetails?.transaction?.message?.instructions);
+
       const gasUsed = txDetails?.meta?.fee || 0;
       console.log("Gas consumed:", gasUsed, "lamports");
       
@@ -384,6 +388,88 @@ describe("commi-merkle", () => {
       // Verify vault received tokens
       const vaultAccount = await getAccount(provider.connection, vaultPda);
       assert.equal(vaultAccount.amount.toString(), fundAmount.toString());
+    });
+  });
+
+  describe("lock/unlock", () => {
+    it("should lock campaign successfully", async () => {
+      const tx = await program.methods
+        .lock()
+        .accounts({
+          distributor: distributor.publicKey,
+          campaign: campaignPda,
+          mint
+        })
+        .signers([distributor])
+        .rpc();
+      
+      console.log("Lock transaction signature:", tx);
+      
+      // Verify campaign is locked
+      const campaignAccount = await program.account.campaignState.fetch(campaignPda);
+      assert.equal(campaignAccount.locked, 1, "Campaign should be locked");
+    });
+
+    it("should prevent claims when campaign is locked", async () => {
+      // First ensure campaign is locked
+      const campaignAccount = await program.account.campaignState.fetch(campaignPda);
+      assert.equal(campaignAccount.locked, 1, "Campaign should be locked for this test");
+
+      // Create a new claimer for this test
+      const testClaimer = Keypair.generate();
+      await provider.connection.requestAirdrop(testClaimer.publicKey, LAMPORTS_PER_SOL);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      const testClaimerAta = await getAssociatedTokenAddress(
+        mint,
+        testClaimer.publicKey
+      );
+
+      try {
+        await program.methods
+          .claim(
+            new anchor.BN(3), // unused index
+            [],
+            new anchor.BN(0)
+          )
+          .accounts({
+            claimer: testClaimer.publicKey,
+            launcher: launcher.publicKey,
+            campaign: campaignPda,
+            mint,
+            vault: vaultPda,
+            claimerAta: testClaimerAta,
+            tokenProgram: TOKEN_PROGRAM_ID,
+          })
+          .signers([testClaimer])
+          .rpc();
+        
+        assert.fail("Should have failed with CampaignLocked error");
+      } catch (error) {
+        assert.include(error.toString(), "CampaignLocked");
+      }
+    });
+
+    it("should only allow distributor to lock campaign", async () => {
+      const unauthorizedUser = Keypair.generate();
+      await provider.connection.requestAirdrop(unauthorizedUser.publicKey, LAMPORTS_PER_SOL);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      try {
+        await program.methods
+          .lock()
+          .accounts({
+            distributor: unauthorizedUser.publicKey,
+            campaign: campaignPda,
+            mint
+          })
+          .signers([unauthorizedUser])
+          .rpc();
+        
+        assert.fail("Should have failed with InvalidDistributor error");
+      } catch (error) {
+        assert.include(error.toString(), "InvalidDistributor");
+      }
     });
   });
 
@@ -454,7 +540,7 @@ describe("commi-merkle", () => {
       
       // Send both instructions in a single transaction
       const tx = new anchor.web3.Transaction().add(extendIx, updateIx);
-      const signature = await provider.sendAndConfirm(tx, [distributor]);
+      const signature = await provider.sendAndConfirm(tx, [distributor]);      
       
       console.log("Update with resize transaction signature:", signature);
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -510,7 +596,7 @@ describe("commi-merkle", () => {
 
       const tx = await program.methods
         .claim(
-          1, // user_idx for claimer1
+          new anchor.BN(1), // user_idx for claimer1
           proof1.map(p => Array.from(p)),
           merkleLeaves[1].nonce,
         )
@@ -554,7 +640,7 @@ describe("commi-merkle", () => {
       try {
         await program.methods
           .claim(
-            1, // user_idx for claimer1
+            new anchor.BN(1), // user_idx for claimer1
             proof1.map(p => Array.from(p)),
             merkleLeaves[1].nonce,
           )
@@ -570,9 +656,9 @@ describe("commi-merkle", () => {
           .signers([claimer1])
           .rpc();
         
-        assert.fail("Should have failed with InvalidAmount error (already claimed)");
+        assert.fail("Should have failed with InvalidClaimAmount error (already claimed)");
       } catch (error) {
-        assert.include(error.toString(), "InvalidAmount"); // Since rewards[1] is now 0
+        assert.include(error.toString(), "InvalidClaimAmount"); // Since rewards[1] is now 0
       }
     });
     
@@ -584,7 +670,7 @@ describe("commi-merkle", () => {
       let proof2 = getProof(expandedMerkleTree, 2);
       const tx = await program.methods
         .claim(
-          2, // user_idx for claimer2
+          new anchor.BN(2), // user_idx for claimer2
           proof2.map(p => Array.from(p)),
           merkleLeaves[2].nonce,
         )
@@ -632,7 +718,7 @@ describe("commi-merkle", () => {
       try {
         await program.methods
           .claim(
-            3, // user_idx 
+            new anchor.BN(3), // user_idx 
             proof1.map(p => Array.from(p)), // Wrong proof for this claimer
             merkleLeaves[1].nonce,
           )
@@ -648,9 +734,9 @@ describe("commi-merkle", () => {
           .signers([invalidClaimer])
           .rpc();
         
-        assert.fail("Should have failed with InvalidAmount error");
+        assert.fail("Should have failed with InvalidClaimAmount error");
       } catch (error) {
-        assert.include(error.toString(), "InvalidAmount");
+        assert.include(error.toString(), "InvalidClaimAmount");
       }
     });
     
@@ -667,7 +753,7 @@ describe("commi-merkle", () => {
       try {
         await program.methods
           .claim(
-            3, // user_idx with no rewards allocated
+            new anchor.BN(3), // user_idx with no rewards allocated
             [],
             new anchor.BN(0)
           )
@@ -683,9 +769,9 @@ describe("commi-merkle", () => {
           .signers([zeroClaimer])
           .rpc();
         
-        assert.fail("Should have failed with InvalidAmount error");
+        assert.fail("Should have failed with InvalidClaimAmount error");
       } catch (error) {
-        assert.include(error.toString(), "InvalidAmount");
+        assert.include(error.toString(), "InvalidClaimAmount");
       }
     });
   });

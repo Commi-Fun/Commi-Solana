@@ -129,7 +129,7 @@ impl<'info> Launch<'info> {
 }
 
 pub fn handler(ctx: Context<Launch>, fund: u64) -> Result<()> {
-  require_gt!(fund, 0, CommiError::InvalidFund);
+  require_gte!(fund, 10000, CommiError::InvalidFund);
   require_eq!(ctx.accounts.distributor.key(), Pubkey::from_str_const("5PpeUwd8XqJ4y75gEM3ATrmaV4piR9GdZhpuFhH76UGw"), CommiError::InvalidDistributor);
   let service_fee = ctx.accounts.service_fee_calculation()?;
   ctx.accounts.transfer_service_fee(service_fee)?;

@@ -24,7 +24,7 @@ pub mod commi_merkle {
     }
 
     #[instruction(discriminator = 2)]
-    pub fn claim(ctx: Context<Claim>, user_idx: u16, proof: Vec<[u8; 32]>, nonce: u64) -> Result<()> {
+    pub fn claim(ctx: Context<Claim>, user_idx: u64, proof: Vec<[u8; 32]>, nonce: u64) -> Result<()> {
         instructions::claim::handler(ctx, user_idx, proof, nonce)
     }
 

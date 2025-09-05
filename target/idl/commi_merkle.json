@@ -189,7 +189,7 @@
       "args": [
         {
           "name": "user_idx",
-          "type": "u16"
+          "type": "u64"
         },
         {
           "name": "proof",

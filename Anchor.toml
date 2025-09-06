@@ -10,11 +10,14 @@ commi_merkle = "2o9SQdKu4rrLySKkoKTuE6ZWECf4sUAUA8zjgYFynqQf"
 mock_pyth_pull = "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ"
 mock_pyth_push = "HxWaRfGzPvrFPz1UzRBEvmsK9LxK65r8Jtt195NDbg7j"
 
+[programs.devnet]
+commi_merkle = "2o9SQdKu4rrLySKkoKTuE6ZWECf4sUAUA8zjgYFynqQf"
+
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

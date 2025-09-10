@@ -7,15 +7,15 @@ mod state;
 
 use instructions::*;
 
-declare_id!("2o9SQdKu4rrLySKkoKTuE6ZWECf4sUAUA8zjgYFynqQf");
+declare_id!("4BY7rXDgtbkgjAY1acpy3Pfg7hXhZf1vpFNtfVreSJHL");
 
 #[program]
 pub mod commi_merkle {
     use super::*;
 
     #[instruction(discriminator = 0)]
-    pub fn launch(ctx: Context<Launch>, fund: u64) -> Result<()> {
-        instructions::launch::handler(ctx, fund)
+    pub fn launch(ctx: Context<Launch>, seed: u64, fund: u64) -> Result<()> {
+        instructions::launch::handler(ctx, seed, fund)
     }
 
     #[instruction(discriminator = 1)]

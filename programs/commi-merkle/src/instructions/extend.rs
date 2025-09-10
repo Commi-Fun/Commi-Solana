@@ -10,7 +10,7 @@ pub struct Extend<'info> {
   pub distributor: Signer<'info>,
   #[account(
     mut,
-    realloc = 32 + 32 + 8 + 1 + 32 + 24 + new_participants as usize * 8 + CampaignState::DISCRIMINATOR.len(), 
+    realloc = 32 + 32 + 8 + 8 + 1 + 32 + 24 + new_participants as usize * 8 + CampaignState::DISCRIMINATOR.len(), 
     realloc::payer = distributor,    
     realloc::zero = false,
   )]
@@ -30,6 +30,7 @@ pub fn handler(ctx: Context<Extend>, new_participants: u64) -> Result<()> {
   ctx.accounts.extend(new_participants)?;
   emit!(ExtendEvent {
     size: new_participants,
+    campaign: ctx.accounts.campaign.key(),
   });
   Ok(())
 }

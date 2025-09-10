@@ -14,7 +14,7 @@ pub struct Update<'info> {
 
   #[account(
     mut,
-    seeds = [b"campaign", launcher.key().as_ref(), mint.key().as_ref()],
+    seeds = [b"campaign", launcher.key().as_ref(), mint.key().as_ref(), campaign.seed.to_le_bytes().as_ref()],
     bump,
     has_one = mint @ CommiError::InvalidMint,
     has_one = launcher @ CommiError::InvalidLauncher
@@ -49,7 +49,6 @@ impl<'info> Update<'info> {
     self.campaign.locked = 0;
     Ok(())
   }
-
 }
 
 // TODO: Update distributor key to a valid fixed address

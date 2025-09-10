@@ -10,6 +10,9 @@ pub enum CommiError {
   #[msg("Invalid Fund")]
   InvalidFund,
 
+  #[msg("Invalid Price Feed Account")]
+  InvalidPriceFeed,
+
   // Update Error
   #[msg("Invalid Update Amount")]
   InvalidUpdateAmount,

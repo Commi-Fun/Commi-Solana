@@ -6,6 +6,7 @@ export interface Campaign {
   mint: string;
   fund: bigint;
   merkleTree: MerkleTree; // Store entire merkle tree
+  
   participants: Map<string, ParticipantInfo>;
   createdAt: Date;
   updatedAt: Date;

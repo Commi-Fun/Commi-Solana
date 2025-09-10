@@ -47,9 +47,10 @@ describe("commi-merkle", () => {
 
   
   // Test constants
-  const fundAmount = new anchor.BN(1000000000); // 1 billion tokens with 9 decimals
+  const fundAmount = new anchor.BN(10000000000); // 10 billion tokens with 9 decimals
   const claimAmount1 = new anchor.BN(100000000); // 100 million tokens
   const claimAmount2 = new anchor.BN(200000000); // 200 million tokens
+  const launchTime = new Date().getTime();
   
   // Merkle tree setup for launch (32 leaves)
   let launchMerkleTree: Buffer[][];
@@ -90,7 +91,7 @@ describe("commi-merkle", () => {
       launcher,
       launcher.publicKey,
       null,
-      9 // 9 decimals
+      6 // 6 decimals
     );
     
     // Create launcher's associated token account and mint tokens
@@ -116,6 +117,7 @@ describe("commi-merkle", () => {
         Buffer.from("campaign"),
         launcher.publicKey.toBuffer(),
         mint.toBuffer(),
+        new anchor.BN(launchTime).toArrayLike(Buffer, "le", 8),
       ],
       program.programId
     );
@@ -304,13 +306,12 @@ describe("commi-merkle", () => {
       
       try {
         await program.methods
-          .launch(belowMinimum)
+          .launch(new anchor.BN(launchTime), belowMinimum)
           .accounts({
             launcher: launcher.publicKey,
             distributor: distributor.publicKey,
             campaign: campaignPda,
-            price_update: pythPriceAccount.publicKey,
-            mint: mint,
+            mint,
             launcherAta,
             vault: vaultPda,
             priceUpdate: pythPriceAccount.publicKey,
@@ -332,12 +333,11 @@ describe("commi-merkle", () => {
       const distributorBalanceBefore = await provider.connection.getBalance(distributor.publicKey);
       
       const tx = await program.methods
-        .launch(fundAmount)
+        .launch(new anchor.BN(launchTime), fundAmount)
         .accounts({
           launcher: launcher.publicKey,
           distributor: distributor.publicKey,
           campaign: campaignPda,
-          price_update: pythPriceAccount.publicKey,
           mint,
           launcherAta,
           vault: vaultPda,

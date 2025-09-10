@@ -17,7 +17,7 @@ pub struct Claim<'info> {
 
   #[account(
     mut,
-    seeds = [b"campaign", launcher.key().as_ref(), mint.key().as_ref()],
+    seeds = [b"campaign", launcher.key().as_ref(), mint.key().as_ref(), campaign.seed.to_le_bytes().as_ref()],
     bump,
     has_one = mint @ CommiError::InvalidMint,
     has_one = launcher @ CommiError::InvalidLauncher
@@ -81,10 +81,12 @@ impl<'info> Claim<'info> {
   fn claim_tokens(&self, user_idx: u64, bump: u8) -> Result<()> {
     let launcher_key = self.launcher.key();
     let mint_key = self.mint.key();
+    let seed = self.campaign.seed.to_le_bytes();
     let signer_seeds: [&[&[u8]]; 1] = [&[
         b"campaign",
         launcher_key.as_ref(),
         mint_key.as_ref(),
+        seed.as_ref(),
         &[bump], // Use the bump from CampaignState
     ]];
 

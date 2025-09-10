@@ -1,5 +1,5 @@
 {
-  "address": "2o9SQdKu4rrLySKkoKTuE6ZWECf4sUAUA8zjgYFynqQf",
+  "address": "4BY7rXDgtbkgjAY1acpy3Pfg7hXhZf1vpFNtfVreSJHL",
   "metadata": {
     "name": "commi_merkle",
     "version": "0.1.0",
@@ -50,6 +50,11 @@
               {
                 "kind": "account",
                 "path": "mint"
+              },
+              {
+                "kind": "account",
+                "path": "campaign.seed",
+                "account": "CampaignState"
               }
             ]
           }
@@ -275,6 +280,10 @@
               {
                 "kind": "account",
                 "path": "mint"
+              },
+              {
+                "kind": "arg",
+                "path": "seed"
               }
             ]
           }
@@ -414,6 +423,10 @@
       ],
       "args": [
         {
+          "name": "seed",
+          "type": "u64"
+        },
+        {
           "name": "fund",
           "type": "u64"
         }
@@ -462,6 +475,11 @@
               {
                 "kind": "account",
                 "path": "mint"
+              },
+              {
+                "kind": "account",
+                "path": "campaign.seed",
+                "account": "CampaignState"
               }
             ]
           }
@@ -522,6 +540,11 @@
               {
                 "kind": "account",
                 "path": "mint"
+              },
+              {
+                "kind": "account",
+                "path": "campaign.seed",
+                "account": "CampaignState"
               }
             ]
           }
@@ -649,46 +672,51 @@
     },
     {
       "code": 6002,
+      "name": "InvalidPriceFeed",
+      "msg": "Invalid Price Feed Account"
+    },
+    {
+      "code": 6003,
       "name": "InvalidUpdateAmount",
       "msg": "Invalid Update Amount"
     },
     {
-      "code": 6003,
+      "code": 6004,
       "name": "InsufficientAllocation",
       "msg": "Insufficient Fund to Allocate"
     },
     {
-      "code": 6004,
+      "code": 6005,
       "name": "InvalidProof",
       "msg": "Invalid Proof"
     },
     {
-      "code": 6005,
+      "code": 6006,
       "name": "InvalidClaimAmount",
       "msg": "Invalid Claim Amount"
     },
     {
-      "code": 6006,
+      "code": 6007,
       "name": "InvalidUserIdx",
       "msg": "Invalid User Idx"
     },
     {
-      "code": 6007,
+      "code": 6008,
       "name": "CampaignLocked",
       "msg": "Campaign Locked"
     },
     {
-      "code": 6008,
+      "code": 6009,
       "name": "InvalidDistributor",
       "msg": "Invalid Distributor"
     },
     {
-      "code": 6009,
+      "code": 6010,
       "name": "InvalidMint",
       "msg": "Invaid Mint"
     },
     {
-      "code": 6010,
+      "code": 6011,
       "name": "InvalidLauncher",
       "msg": "Invaid Launcher"
     }
@@ -709,6 +737,10 @@
           },
           {
             "name": "fund",
+            "type": "u64"
+          },
+          {
+            "name": "seed",
             "type": "u64"
           },
           {
@@ -761,6 +793,10 @@
           {
             "name": "size",
             "type": "u64"
+          },
+          {
+            "name": "campaign",
+            "type": "pubkey"
           }
         ]
       }
@@ -772,6 +808,10 @@
         "fields": [
           {
             "name": "fund",
+            "type": "u64"
+          },
+          {
+            "name": "seed",
             "type": "u64"
           },
           {

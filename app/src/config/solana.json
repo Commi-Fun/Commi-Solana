@@ -1,0 +1,4 @@
+{
+  "distKeyFile": "../test-distributor.json",
+  "rpcUrl": "https://api.devnet.solana.com"
+}

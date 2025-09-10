@@ -4,6 +4,7 @@ use anchor_lang::prelude::*;
 #[event]
 pub struct LaunchEvent {
   pub fund: u64,
+  pub seed: u64,
   pub launcher: Pubkey,
   pub mint: Pubkey,
 }
@@ -23,5 +24,6 @@ pub struct ClaimEvent {
 
 #[event]
 pub struct ExtendEvent {
-  pub size: u64
+  pub size: u64,
+  pub campaign: Pubkey,
 }

@@ -11,6 +11,7 @@ use crate::errors::CommiError;
 use crate::events::LaunchEvent;
 
 #[derive(Accounts)]
+#[instruction(seed: u64)]
 pub struct Launch<'info> {
   #[account(mut)]
   pub launcher: Signer<'info>,
@@ -22,8 +23,8 @@ pub struct Launch<'info> {
     init,
     payer = launcher,
     // Allocate 31 participants + 1 funder at the beginning
-    space = 32 + 32 + 8 + 1 + 32 + 24 + 32 * 8 + CampaignState::DISCRIMINATOR.len(), 
-    seeds = [b"campaign", launcher.key().as_ref(), mint.key().as_ref()],
+    space = 32 + 32 + 8 + 8 + 1 + 32 + 24 + 32 * 8 + CampaignState::DISCRIMINATOR.len(), 
+    seeds = [b"campaign", launcher.key().as_ref(), mint.key().as_ref(), seed.to_le_bytes().as_ref()],
     bump,
   )]
   pub campaign: Account<'info, CampaignState>,
@@ -95,13 +96,14 @@ impl<'info> Launch<'info> {
     Ok(())
   }
 
-  fn populate_campaign(&mut self, fund: u64) -> Result<()> {
+  fn populate_campaign(&mut self, seed: u64, fund: u64) -> Result<()> {
     let mut rewards = vec![0u64; 32];
     rewards[0] = fund;
     self.campaign.set_inner(CampaignState {
       merkle_root: [0u8; 32],
       launcher: self.launcher.key(),
       mint: self.mint.key(),
+      seed,
       locked: 0,
       fund,
       rewards,
@@ -128,16 +130,22 @@ impl<'info> Launch<'info> {
 
 }
 
-pub fn handler(ctx: Context<Launch>, fund: u64) -> Result<()> {
-  require_gte!(fund, 10000, CommiError::InvalidFund);
+pub fn handler(ctx: Context<Launch>, seed: u64, fund: u64) -> Result<()> {
+  let minimum = 10u64.checked_pow(ctx.accounts.mint.decimals as u32)
+    .ok_or(CommiError::InvalidFund)?
+    .checked_mul(10000)
+    .ok_or(CommiError::InvalidFund)?;
+  require_gte!(fund, minimum, CommiError::InvalidFund);
   require_eq!(ctx.accounts.distributor.key(), Pubkey::from_str_const("5PpeUwd8XqJ4y75gEM3ATrmaV4piR9GdZhpuFhH76UGw"), CommiError::InvalidDistributor);
+  require_eq!(ctx.accounts.price_update.key(), Pubkey::from_str_const("7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE"), CommiError::InvalidPriceFeed);
   let service_fee = ctx.accounts.service_fee_calculation()?;
   ctx.accounts.transfer_service_fee(service_fee)?;
-  ctx.accounts.populate_campaign(fund)?;
+  ctx.accounts.populate_campaign(seed, fund)?;
   ctx.accounts.deposit_tokens(fund)?;
   emit!(LaunchEvent { 
     launcher: ctx.accounts.launcher.key(), 
     fund, 
+    seed,
     mint:  ctx.accounts.mint.key(),
   });
   Ok(())

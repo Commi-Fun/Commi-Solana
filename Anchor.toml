@@ -6,12 +6,12 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-commi_merkle = "2o9SQdKu4rrLySKkoKTuE6ZWECf4sUAUA8zjgYFynqQf"
+commi_merkle = "4BY7rXDgtbkgjAY1acpy3Pfg7hXhZf1vpFNtfVreSJHL"
 mock_pyth_pull = "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ"
 mock_pyth_push = "HxWaRfGzPvrFPz1UzRBEvmsK9LxK65r8Jtt195NDbg7j"
 
 [programs.devnet]
-commi_merkle = "2o9SQdKu4rrLySKkoKTuE6ZWECf4sUAUA8zjgYFynqQf"
+commi_merkle = "4BY7rXDgtbkgjAY1acpy3Pfg7hXhZf1vpFNtfVreSJHL"
 
 [registry]
 url = "https://api.apr.dev"
